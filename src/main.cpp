@@ -144,6 +144,7 @@ int main() {
             .write = false,
             .compareOp = canta::CompareOp::GEQUAL
         },
+        .colourFormats = { swapchain->format() }
     }).value();
 
     auto renderGraph = canta::RenderGraph::create({
@@ -151,6 +152,7 @@ int main() {
         .multiQueue = false,
         .name = "primary_rendergraph",
     });
+    renderGraph.setIndividualPipelineStatistics(true);
 
     auto vertexBuffer = loadObj(*device, "/home/olorin99/Documents/UQ/COSC3000/Graphics Project/models/10299_Monkey-Wrench_v1_L3.obj");
 
@@ -222,6 +224,25 @@ int main() {
 
         if (ImGui::Begin("Camera")) {
             ImGui::Text("Position: { %f, %f, %f }", camera.position().x(), camera.position().y(), camera.position().z());
+
+            auto pipelineStatistics = renderGraph.pipelineStatistics();
+            for (auto& pipelineStats : pipelineStatistics) {
+                if (ImGui::TreeNode(pipelineStats.first.c_str())) {
+                    auto stats = pipelineStats.second.result().value();
+                    ImGui::Text("Input Assembly Vertices: %d", stats.inputAssemblyVertices);
+                    ImGui::Text("Input Assembly Primitives: %d", stats.inputAssemblyPrimitives);
+                    ImGui::Text("Vertex Shader Invocations: %d", stats.vertexShaderInvocations);
+                    ImGui::Text("Geometry Shader Invocations: %d", stats.geometryShaderInvocations);
+                    ImGui::Text("Geometry Shader Primitives: %d", stats.geometryShaderPrimitives);
+                    ImGui::Text("Clipping Invocations: %d", stats.clippingInvocations);
+                    ImGui::Text("Clipping Primitives: %d", stats.clippingPrimitives);
+                    ImGui::Text("Fragment Shader Invocations: %d", stats.fragmentShaderInvocations);
+                    ImGui::Text("Tessellation Control Shader Patches: %d", stats.tessellationControlShaderPatches);
+                    ImGui::Text("Tessellation Evaluation Shader Invocations: %d", stats.tessellationEvaluationShaderInvocations);
+                    ImGui::Text("Compute Shader Invocations: %d", stats.computeShaderInvocations);
+                    ImGui::TreePop();
+                }
+            }
         }
         ImGui::End();
 
