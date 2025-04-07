@@ -27,14 +27,19 @@ declareBufferReference(CameraBuffer,
     GPUCamera camera;
 );
 
+declareBufferReference(TransformBuffer,
+    mat4 transform;
+);
+
 layout (push_constant) uniform Push {
     VertexBuffer vertexBuffer;
     CameraBuffer camera;
+    TransformBuffer transform;
 };
 
 void main() {
     Vertex vertex = vertexBuffer.vertices[gl_VertexIndex];
     GPUCamera camera = camera.camera;
 
-    gl_Position = camera.projection * camera.view * vec4(vertex.position, 1.0);
+    gl_Position = camera.projection * camera.view * transform.transform * vec4(vertex.position, 1.0);
 }

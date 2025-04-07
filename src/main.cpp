@@ -98,6 +98,37 @@ std::pair<canta::BufferHandle, i32> loadObj(canta::Device& device, const std::fi
     return { vertexBuffer, vertices.size() };
 }
 
+class Transform {
+public:
+
+    Transform(const ende::math::Vec3f& pos = { 0, 0, 0 }, const ende::math::Quaternion& rot = { 0, 0, 0, 1 }, const ende::math::Vec3f& scale = { 1, 1, 1 })
+        : _position(pos), _rotation(rot), _scale(scale)
+    {}
+
+    auto toMatrix() const -> ende::math::Mat4f {
+        auto translation = ende::math::translation<4, f32>(_position);
+        auto rotation = _rotation.toMat();
+        auto scale = ende::math::scale<4, f32>(_scale);
+
+        return translation * rotation * scale;
+    }
+
+    auto pos() const -> ende::math::Vec3f { return _position; }
+    auto rot() const -> ende::math::Quaternion { return _rotation; }
+    auto scale() const -> ende::math::Vec3f { return _scale; }
+
+    void setPos(const ende::math::Vec3f& pos) { _position = pos; }
+    void setRot(const ende::math::Quaternion& rot) { _rotation = rot; }
+    void setScale(const ende::math::Vec3f& scale) { _scale = scale; }
+
+private:
+
+    ende::math::Vec3f _position = {};
+    ende::math::Quaternion _rotation = {};
+    ende::math::Vec3f _scale = {};
+
+};
+
 int main() {
 
     auto window = canta::SDLWindow("graphics_project", 960, 540);
@@ -178,6 +209,22 @@ int main() {
         })
     });
 
+    auto objectTransform = Transform();
+    auto transformBuffers = std::to_array({
+        device->createBuffer({
+            .size = sizeof(ende::math::Mat4f),
+            .usage = canta::BufferUsage::STORAGE,
+            .type = canta::MemoryType::STAGING,
+            .name = "transform_buffer_0"
+        }),
+        device->createBuffer({
+            .size = sizeof(ende::math::Mat4f),
+            .usage = canta::BufferUsage::STORAGE,
+            .type = canta::MemoryType::STAGING,
+            .name = "transform_buffer_1"
+        })
+    });
+
     bool running = true;
     SDL_Event event;
     f32 dt = 0.0f;
@@ -217,13 +264,30 @@ int main() {
         device->beginFrame();
         device->gc();
         imguiContext.beginFrame();
-        ImGui::ShowDemoWindow();
+        // ImGui::ShowDemoWindow();
 
-        canta::drawRenderGraph(renderGraph);
-        canta::renderGraphDebugUi(renderGraph);
+        // canta::drawRenderGraph(renderGraph);
+        // canta::renderGraphDebugUi(renderGraph);
 
-        if (ImGui::Begin("Camera")) {
+        if (ImGui::Begin("Settings")) {
             ImGui::Text("Position: { %f, %f, %f }", camera.position().x(), camera.position().y(), camera.position().z());
+
+            auto pos = objectTransform.pos();
+            if (ImGui::DragFloat3("Position", &pos[0], 0.1))
+                objectTransform.setPos(pos);
+
+            auto eulerAnglesRad = objectTransform.rot().toEuler();
+            auto eulerAnglesDeg = ende::math::Vec3f{
+                static_cast<f32>(ende::math::deg(eulerAnglesRad.x())),
+                static_cast<f32>(ende::math::deg(eulerAnglesRad.y())),
+                static_cast<f32>(ende::math::deg(eulerAnglesRad.z()))
+            };
+            if (ImGui::DragFloat3("Rotation", &eulerAnglesDeg[0], 1, 0, 360))
+                objectTransform.setRot(ende::math::Quaternion(ende::math::rad(eulerAnglesDeg.x()), ende::math::rad(eulerAnglesDeg.y()), ende::math::rad(eulerAnglesDeg.z())));
+
+            auto scale = objectTransform.scale();
+            if (ImGui::DragFloat3("Scale", &scale[0], 0.1))
+                objectTransform.setScale(scale);
 
             auto pipelineStatistics = renderGraph.pipelineStatistics();
             for (auto& pipelineStats : pipelineStatistics) {
@@ -249,6 +313,7 @@ int main() {
         ImGui::Render();
 
         cameraBuffers[device->flyingIndex()]->data(camera.gpuCamera());
+        transformBuffers[device->flyingIndex()]->data(objectTransform.toMatrix());
 
         renderGraph.reset();
         auto swapImage = swapchain->acquire().value();
@@ -268,19 +333,27 @@ int main() {
             .name = "camera_buffer"
         });
 
+        auto transformBufferIndex = renderGraph.addBuffer({
+            .handle = transformBuffers[device->flyingIndex()],
+            .name = "transform_buffer"
+        });
+
         renderGraph.addPass({ .name = "main", .type = canta::PassType::GRAPHICS })
             .setPipeline(pipeline)
             .addStorageBufferRead(vertexBufferIndex, canta::PipelineStage::VERTEX_SHADER)
             .addStorageBufferRead(cameraBufferIndex, canta::PipelineStage::VERTEX_SHADER)
+            .addStorageBufferRead(transformBufferIndex, canta::PipelineStage::VERTEX_SHADER)
             .addColourWrite(swapchainIndex)
-            .setExecuteFunction([vertexBuffer, cameraBufferIndex](auto& cmd, auto& graph) {
+            .setExecuteFunction([vertexBuffer, cameraBufferIndex, transformBufferIndex](auto& cmd, auto& graph) {
                 struct Push {
                     u64 vertexBuffer;
                     u64 cameraBuffer;
+                    u64 transformBuffer;
                 };
                 cmd.pushConstants(canta::ShaderStage::VERTEX, Push {
                     .vertexBuffer = vertexBuffer.first->address(),
                     .cameraBuffer = graph.getBuffer(cameraBufferIndex)->address(),
+                    .transformBuffer = graph.getBuffer(transformBufferIndex)->address(),
                 });
                 cmd.draw(vertexBuffer.second);
             });
