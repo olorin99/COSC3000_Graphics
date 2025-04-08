@@ -129,6 +129,13 @@ private:
 
 };
 
+struct Light {
+    ende::math::Vec3f position = {};
+    ende::math::Vec3f colour = { 1, 1, 1 };
+    f32 intensity = 1.0f;
+    f32 radius = 100.f;
+};
+
 int main() {
 
     auto window = canta::SDLWindow("graphics_project", 960, 540);
@@ -163,7 +170,7 @@ int main() {
         },
         .fragment = {
             .module = pipelineManager.getShader({
-                .path = "main.frag",
+                .path = "/home/olorin99/Documents/UQ/COSC3000/graphics_project/src/main.frag",
                 .stage = canta::ShaderStage::FRAGMENT,
             }).value()
         },
@@ -171,11 +178,12 @@ int main() {
             .cullMode = canta::CullMode::NONE
         },
         .depthState = {
-            .test = false,
-            .write = false,
-            .compareOp = canta::CompareOp::GEQUAL
+            .test = true,
+            .write = true,
+            .compareOp = canta::CompareOp::GREATER
         },
-        .colourFormats = { swapchain->format() }
+        .colourFormats = { swapchain->format() },
+        .depthFormat = canta::Format::D16_UNORM
     }).value();
 
     auto renderGraph = canta::RenderGraph::create({
@@ -225,6 +233,22 @@ int main() {
         })
     });
 
+    auto light = Light{};
+    auto lightBuffers = std::to_array({
+        device->createBuffer({
+            .size = sizeof(Light),
+            .usage = canta::BufferUsage::STORAGE,
+            .type = canta::MemoryType::STAGING,
+            .name = "light_buffer_0"
+        }),
+        device->createBuffer({
+            .size = sizeof(Light),
+            .usage = canta::BufferUsage::STORAGE,
+            .type = canta::MemoryType::STAGING,
+            .name = "light_buffer_1"
+        })
+    });
+
     bool running = true;
     SDL_Event event;
     f32 dt = 0.0f;
@@ -264,30 +288,65 @@ int main() {
         device->beginFrame();
         device->gc();
         imguiContext.beginFrame();
-        // ImGui::ShowDemoWindow();
-
-        // canta::drawRenderGraph(renderGraph);
-        // canta::renderGraphDebugUi(renderGraph);
 
         if (ImGui::Begin("Settings")) {
-            ImGui::Text("Position: { %f, %f, %f }", camera.position().x(), camera.position().y(), camera.position().z());
+            if (ImGui::Button("Reload Shaders"))
+                pipelineManager.reloadAll();
+            ImGui::Text("Camera");
+            {
+                ImGui::PushID(&camera);
+                auto pos = camera.position();
+                if (ImGui::DragFloat3("Position", &pos[0], 0.1))
+                    camera.setPosition(pos);
 
-            auto pos = objectTransform.pos();
-            if (ImGui::DragFloat3("Position", &pos[0], 0.1))
-                objectTransform.setPos(pos);
+                auto eulerAnglesRad = camera.rotation().toEuler();
+                auto eulerAnglesDeg = ende::math::Vec3f{
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.x())),
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.y())),
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.z()))
+                };
+                if (ImGui::DragFloat3("Rotation", &eulerAnglesDeg[0], 1, 0, 360))
+                    camera.setRotation(ende::math::Quaternion(ende::math::rad(eulerAnglesDeg.x()), ende::math::rad(eulerAnglesDeg.y()), ende::math::rad(eulerAnglesDeg.z())));
+                ImGui::PopID();
+            }
+            ImGui::Separator();
+            {
+                ImGui::PushID(&objectTransform);
+                ImGui::Text("Object Transform");
+                auto pos = objectTransform.pos();
+                if (ImGui::DragFloat3("Position", &pos[0], 0.1))
+                    objectTransform.setPos(pos);
 
-            auto eulerAnglesRad = objectTransform.rot().toEuler();
-            auto eulerAnglesDeg = ende::math::Vec3f{
-                static_cast<f32>(ende::math::deg(eulerAnglesRad.x())),
-                static_cast<f32>(ende::math::deg(eulerAnglesRad.y())),
-                static_cast<f32>(ende::math::deg(eulerAnglesRad.z()))
-            };
-            if (ImGui::DragFloat3("Rotation", &eulerAnglesDeg[0], 1, 0, 360))
-                objectTransform.setRot(ende::math::Quaternion(ende::math::rad(eulerAnglesDeg.x()), ende::math::rad(eulerAnglesDeg.y()), ende::math::rad(eulerAnglesDeg.z())));
+                auto eulerAnglesRad = objectTransform.rot().toEuler();
+                auto eulerAnglesDeg = ende::math::Vec3f{
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.x())),
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.y())),
+                    static_cast<f32>(ende::math::deg(eulerAnglesRad.z()))
+                };
+                if (ImGui::DragFloat3("Rotation", &eulerAnglesDeg[0], 1, 0, 360))
+                    objectTransform.setRot(ende::math::Quaternion(ende::math::rad(eulerAnglesDeg.x()), ende::math::rad(eulerAnglesDeg.y()), ende::math::rad(eulerAnglesDeg.z())));
 
-            auto scale = objectTransform.scale();
-            if (ImGui::DragFloat3("Scale", &scale[0], 0.1))
-                objectTransform.setScale(scale);
+                auto scale = objectTransform.scale();
+                if (ImGui::DragFloat3("Scale", &scale[0], 0.1))
+                    objectTransform.setScale(scale);
+                ImGui::PopID();
+            }
+            {
+                ImGui::PushID(&light);
+                ImGui::Text("Light");
+                auto pos = light.position;
+                if (ImGui::DragFloat3("Position", &pos[0], 0.1))
+                    light.position = pos;
+
+                auto colour = light.colour;;
+                if (ImGui::ColorEdit3("Colour", &colour[0]))
+                    light.colour = colour;
+
+
+                ImGui::DragFloat("Intensity", &light.intensity, 0.1, 0, 100);
+                ImGui::DragFloat("Radius", &light.radius, 0.1, 0, 100);
+                ImGui::PopID();
+            }
 
             auto pipelineStatistics = renderGraph.pipelineStatistics();
             for (auto& pipelineStats : pipelineStatistics) {
@@ -314,6 +373,7 @@ int main() {
 
         cameraBuffers[device->flyingIndex()]->data(camera.gpuCamera());
         transformBuffers[device->flyingIndex()]->data(objectTransform.toMatrix());
+        lightBuffers[device->flyingIndex()]->data(light);
 
         renderGraph.reset();
         auto swapImage = swapchain->acquire().value();
@@ -321,6 +381,10 @@ int main() {
         auto swapchainIndex = renderGraph.addImage({
             .handle = swapImage,
             .name = "swapchain_image"
+        });
+
+        auto depthBufferIndex = renderGraph.addImage({
+            .format = canta::Format::D16_UNORM
         });
 
         auto vertexBufferIndex = renderGraph.addBuffer({
@@ -338,22 +402,31 @@ int main() {
             .name = "transform_buffer"
         });
 
+        auto lightBufferIndex = renderGraph.addBuffer({
+            .handle = lightBuffers[device->flyingIndex()],
+            .name = "light_buffer"
+        });
+
         renderGraph.addPass({ .name = "main", .type = canta::PassType::GRAPHICS })
             .setPipeline(pipeline)
             .addStorageBufferRead(vertexBufferIndex, canta::PipelineStage::VERTEX_SHADER)
             .addStorageBufferRead(cameraBufferIndex, canta::PipelineStage::VERTEX_SHADER)
             .addStorageBufferRead(transformBufferIndex, canta::PipelineStage::VERTEX_SHADER)
+            .addStorageBufferRead(lightBufferIndex, canta::PipelineStage::VERTEX_SHADER)
             .addColourWrite(swapchainIndex)
-            .setExecuteFunction([vertexBuffer, cameraBufferIndex, transformBufferIndex](auto& cmd, auto& graph) {
+            .addDepthWrite(depthBufferIndex, canta::DepthClearValue{0, 0})
+            .setExecuteFunction([vertexBuffer, cameraBufferIndex, transformBufferIndex, lightBufferIndex](auto& cmd, auto& graph) {
                 struct Push {
                     u64 vertexBuffer;
                     u64 cameraBuffer;
                     u64 transformBuffer;
+                    u64 lightBuffer;
                 };
                 cmd.pushConstants(canta::ShaderStage::VERTEX, Push {
                     .vertexBuffer = vertexBuffer.first->address(),
                     .cameraBuffer = graph.getBuffer(cameraBufferIndex)->address(),
                     .transformBuffer = graph.getBuffer(transformBufferIndex)->address(),
+                    .lightBuffer = graph.getBuffer(lightBufferIndex)->address(),
                 });
                 cmd.draw(vertexBuffer.second);
             });
