@@ -307,6 +307,40 @@ int main() {
                 };
                 if (ImGui::DragFloat3("Rotation", &eulerAnglesDeg[0], 1, 0, 360))
                     camera.setRotation(ende::math::Quaternion(ende::math::rad(eulerAnglesDeg.x()), ende::math::rad(eulerAnglesDeg.y()), ende::math::rad(eulerAnglesDeg.z())));
+
+                auto far = camera.far();
+                if (ImGui::DragFloat("Far", &far))
+                    camera.setFar(far);
+                auto near = camera.near();
+                if (ImGui::DragFloat("Near", &near))
+                    camera.setNear(near);
+                auto fov = camera.fov();
+                if (ImGui::DragFloat("Fov", &fov, 0.1))
+                    camera.setFov(fov);
+
+                if (ImGui::TreeNode("Transform")) {
+                    auto view = camera.view();
+                    auto projection = camera.projection();
+                    auto viewProjection = view * projection;
+                    ImGui::Text("View Matrix");
+                    ImGui::Text("|%f|%f|%f|%f|", view[0][0], view[0][1], view[0][2], view[0][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", view[1][0], view[1][1], view[1][2], view[1][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", view[2][0], view[2][1], view[2][2], view[2][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", view[3][0], view[3][1], view[3][2], view[3][3]);
+                    ImGui::Separator();
+                    ImGui::Text("Projection Matrix");
+                    ImGui::Text("|%f|%f|%f|%f|", projection[0][0], projection[0][1], projection[0][2], projection[0][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", projection[1][0], projection[1][1], projection[1][2], projection[1][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", projection[2][0], projection[2][1], projection[2][2], projection[2][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", projection[3][0], projection[3][1], projection[3][2], projection[3][3]);
+                    ImGui::Separator();
+                    ImGui::Text("View Projection Matrix");
+                    ImGui::Text("|%f|%f|%f|%f|", viewProjection[0][0], viewProjection[0][1], viewProjection[0][2], viewProjection[0][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", viewProjection[1][0], viewProjection[1][1], viewProjection[1][2], viewProjection[1][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", viewProjection[2][0], viewProjection[2][1], viewProjection[2][2], viewProjection[2][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", viewProjection[3][0], viewProjection[3][1], viewProjection[3][2], viewProjection[3][3]);
+                    ImGui::TreePop();
+                }
                 ImGui::PopID();
             }
             ImGui::Separator();
@@ -329,6 +363,16 @@ int main() {
                 auto scale = objectTransform.scale();
                 if (ImGui::DragFloat3("Scale", &scale[0], 0.1))
                     objectTransform.setScale(scale);
+
+                if (ImGui::TreeNode("Transform")) {
+                    auto transform = objectTransform.toMatrix();
+                    ImGui::Text("Transform Matrix");
+                    ImGui::Text("|%f|%f|%f|%f|", transform[0][0], transform[0][1], transform[0][2], transform[0][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", transform[1][0], transform[1][1], transform[1][2], transform[1][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", transform[2][0], transform[2][1], transform[2][2], transform[2][3]);
+                    ImGui::Text("|%f|%f|%f|%f|", transform[3][0], transform[3][1], transform[3][2], transform[3][3]);
+                    ImGui::TreePop();
+                }
                 ImGui::PopID();
             }
             {
