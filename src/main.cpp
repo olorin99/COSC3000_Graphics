@@ -233,7 +233,11 @@ int main() {
         })
     });
 
-    auto light = Light{};
+    auto light = Light{
+        .colour = { 1, 1, 1 },
+        .intensity = 64,
+        .radius = 50,
+    };
     auto lightBuffers = std::to_array({
         device->createBuffer({
             .size = sizeof(Light),
