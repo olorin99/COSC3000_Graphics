@@ -68,7 +68,8 @@ void main() {
 
     vec3 viewDir = normalize(camera.camera.position - fsIn.fragPos);
     vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 0.01);
+    vec3 halfwayDir = normalize(lightDir + viewDir);
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
     vec3 specular = light.colour * spec;
 
     float distance = length(light.position - fsIn.fragPos);
