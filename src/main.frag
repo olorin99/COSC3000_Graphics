@@ -12,7 +12,6 @@ layout (location = 0) out vec4 FragOut;
 struct Vertex {
     vec3 position;
     vec3 normal;
-    vec2 uv;
 };
 declareBufferReference(VertexBuffer,
     Vertex vertices[];
@@ -77,7 +76,7 @@ void main() {
     float rangeSqr = light.radius * light.radius;
     float dpr = distanceSqr / max(0.0001, rangeSqr);
     dpr *= dpr;
-    float attenuation = clamp(1 - dpr, 0, 1.0) / max(0.0001, distanceSqr);
+    float attenuation = 1;//clamp(1 - dpr, 0, 1.0) / max(0.0001, distanceSqr);
 
     vec3 result = (ambient + diffuse + specular) * light.intensity * attenuation;
 

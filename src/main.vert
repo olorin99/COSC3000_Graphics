@@ -10,7 +10,6 @@ layout (location = 0) out VsOut {
 struct Vertex {
     vec3 position;
     vec3 normal;
-    vec2 uv;
 };
 declareBufferReference(VertexBuffer,
     Vertex vertices[];

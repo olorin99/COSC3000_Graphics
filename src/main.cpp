@@ -8,6 +8,7 @@
 #include "tiny_obj_loader.h"
 
 #include <filesystem>
+#include <iostream>
 
 #include <Canta/PipelineManager.h>
 #include "embeded_shaders_graphics_project.h"
@@ -15,9 +16,9 @@
 struct Vertex {
     ende::math::Vec3f position;
     ende::math::Vec3f normal;
-    ende::math::Vec<2, f32> texCoord;
 };
 
+// Loads an obj file
 std::pair<canta::BufferHandle, i32> loadObj(canta::Device& device, const std::filesystem::path& path) {
     tinyobj::ObjReaderConfig reader_config;
     reader_config.mtl_search_path = "./"; // Path to material files
@@ -37,7 +38,6 @@ std::pair<canta::BufferHandle, i32> loadObj(canta::Device& device, const std::fi
 
     auto& attrib = reader.GetAttrib();
     auto& shapes = reader.GetShapes();
-    auto& materials = reader.GetMaterials();
 
     std::vector<Vertex> vertices;
 
@@ -70,34 +70,25 @@ std::pair<canta::BufferHandle, i32> loadObj(canta::Device& device, const std::fi
                     vertex.normal = { nx, ny, nz };
                 }
 
-                // Check if `texcoord_index` is zero or positive. negative = no texcoord data
-                if (idx.texcoord_index >= 0) {
-                    tinyobj::real_t tx = attrib.texcoords[2*size_t(idx.texcoord_index)+0];
-                    tinyobj::real_t ty = attrib.texcoords[2*size_t(idx.texcoord_index)+1];
-                    vertex.texCoord = { tx, ty };
-                }
-
                 vertices.push_back(vertex);
             }
             index_offset += fv;
-
-            // per-face material
-            shapes[s].mesh.material_ids[f];
         }
     }
 
+    // Create a gpu buffer and upload vertex data.
     auto vertexBuffer = device.createBuffer({
         .size = static_cast<u32>(vertices.size() * sizeof(Vertex)),
         .usage = canta::BufferUsage::VERTEX,
         .type = canta::MemoryType::STAGING,
         .persistentlyMapped = true,
     });
-
     vertexBuffer->data(vertices);
 
     return { vertexBuffer, vertices.size() };
 }
 
+// Holds values for transforming the model
 class Transform {
 public:
 
@@ -136,10 +127,19 @@ struct Light {
     f32 radius = 100.f;
 };
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Get obj path to load
+    if (argc < 2) {
+        std::printf("First parameter required to be path to obj file\n");
+        return -1;
+    }
+    std::filesystem::path path = argv[1];
 
-    auto window = canta::SDLWindow("graphics_project", 960, 540);
 
+    // Create a SDL window
+    auto window = canta::SDLWindow("graphics_project", 1440, 810);
+
+    // Initializes the vulkan context
     auto device = canta::Device::create({
         .applicationName = "graphics_project",
         .enableMeshShading = false,
@@ -161,16 +161,17 @@ int main() {
     });
     registerEmbededShadersgraphics_project(pipelineManager);
 
+    // Create pipeline with appropriate shaders and raster/depth/format values.
     auto pipeline = pipelineManager.getPipeline(canta::Pipeline::CreateInfo{
         .vertex = {
             .module = pipelineManager.getShader({
-                .path = "/home/olorin99/Documents/UQ/COSC3000/graphics_project/src/main.vert",
+                .path = "main.vert",
                 .stage = canta::ShaderStage::VERTEX,
             }).value()
         },
         .fragment = {
             .module = pipelineManager.getShader({
-                .path = "/home/olorin99/Documents/UQ/COSC3000/graphics_project/src/main.frag",
+                .path = "main.frag",
                 .stage = canta::ShaderStage::FRAGMENT,
             }).value()
         },
@@ -193,7 +194,7 @@ int main() {
     });
     renderGraph.setIndividualPipelineStatistics(true);
 
-    auto vertexBuffer = loadObj(*device, "/home/olorin99/Documents/UQ/COSC3000/Graphics Project/models/10299_Monkey-Wrench_v1_L3.obj");
+    auto vertexBuffer = loadObj(*device, path);
 
     auto camera = canta::Camera::create({
         .position = { 0, 0, 2 },
@@ -202,6 +203,8 @@ int main() {
         .height = static_cast<f32>(window.extent().y())
     });
 
+    // Create multiple buffers due to having multiple frames in flight.
+    // This allows the gpu to run calculations with one frames data while the cpu is preparing the second frame
     auto cameraBuffers = std::to_array({
         device->createBuffer({
             .size = sizeof(canta::GPUCamera),
@@ -234,6 +237,8 @@ int main() {
     });
 
     auto light = Light{
+        // .position = { 0, 5, -8 },
+        .position = { 0, 0, 0 },
         .colour = { 1, 1, 1 },
         .intensity = 64,
         .radius = 50,
@@ -266,6 +271,7 @@ int main() {
             imguiContext.processEvent(&event);
         }
         {
+            // Camera movement
             auto cameraPosition = camera.position();
             auto cameraRotation = camera.rotation().unit();
             if (SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_W])
@@ -289,9 +295,36 @@ int main() {
             if (SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_DOWN])
                 camera.setRotation(ende::math::Quaternion(cameraRotation.right(), ende::math::rad(45) * dt) * cameraRotation);
         }
+        // Handle tasks at frame boundaries (incrementing frame counter, resource deletion, etc)
         device->beginFrame();
         device->gc();
+        // Draw ui
         imguiContext.beginFrame();
+
+        auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->Pos);
+        ImGui::SetNextWindowSize(viewport->Size);
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::SetNextWindowBgAlpha(0.0f);
+
+        constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar |
+                                             ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+                                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                                             ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBackground;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0,0,0,0));
+
+        ImGui::Begin("Main", nullptr, windowFlags);
+        ImGui::PopStyleColor(1);
+        ImGui::PopStyleVar(3);
+
+        ImGuiID dockspaceID = ImGui::GetID("dockspace");
+        ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_PassthruCentralNode;
+        ImGui::DockSpace(dockspaceID, {0, 0}, dockspaceFlags);
+        ImGui::End();
 
         if (ImGui::Begin("Settings")) {
             if (ImGui::Button("Reload Shaders"))
@@ -419,13 +452,17 @@ int main() {
 
         ImGui::Render();
 
+        // Reupload data that may have changed.
+        // device->flyingIndex() refers to the current frame in flight
         cameraBuffers[device->flyingIndex()]->data(camera.gpuCamera());
         transformBuffers[device->flyingIndex()]->data(objectTransform.toMatrix());
         lightBuffers[device->flyingIndex()]->data(light);
 
+        // Current frames rendergraph creation
         renderGraph.reset();
         auto swapImage = swapchain->acquire().value();
 
+        // Register resources to rendergraph
         auto swapchainIndex = renderGraph.addImage({
             .handle = swapImage,
             .name = "swapchain_image"
@@ -455,6 +492,8 @@ int main() {
             .name = "light_buffer"
         });
 
+        // Main renderpass
+        // Reads vertex, camera, transform and light information and outputs an image to the backbuffer
         renderGraph.addPass({ .name = "main", .type = canta::PassType::GRAPHICS })
             .setPipeline(pipeline)
             .addStorageBufferRead(vertexBufferIndex, canta::PipelineStage::VERTEX_SHADER)
@@ -479,7 +518,8 @@ int main() {
                 cmd.draw(vertexBuffer.second);
             });
 
-
+        // UI Pass
+        // Draws the ui to the backbuffer
         renderGraph.addPass({.name = "ui", .type = canta::PassType::GRAPHICS})
             .setManualPipeline(true)
             .addColourWrite(swapchainIndex)
@@ -489,24 +529,30 @@ int main() {
 
         renderGraph.setBackbuffer(swapchainIndex);
 
+        // Errors if the resulting graph is not a directed acyclic graph
         if (!renderGraph.compile())
             return -1;
 
+        // Wait on previous frames result as well as swapchains availability
         auto waits = std::to_array({
             canta::SemaphorePair{ device->frameSemaphore(), device->framePrevValue() },
             canta::SemaphorePair(swapchain->acquireSemaphore()),
         });
+        // Signal frame completion and let the swapchain know the image is ready to present to the screen
         auto signals = std::to_array({
             canta::SemaphorePair(device->frameSemaphore()),
             canta::SemaphorePair(swapchain->presentSemaphore())
         });
+        // Run the prepared graph
         if (!renderGraph.execute(waits, signals, {}, false))
             return -2;
 
+        // Present the ready image
         swapchain->present();
         dt = device->endFrame() / 1000.f;
     }
 
+    // Wait for the device to finish its work before exiting the program.
     device->waitIdle();
     return 0;
 }
